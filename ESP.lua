@@ -1,19 +1,21 @@
 -- ============================================================
--- NoopYT Universal v8 — Final Edition
--- ESP + Aimbot + Predictive + Silent Aim + Pro GUI
--- متوافق مع: Arceus X Neo / Delta / Fluxus (أندرويد)
+-- NoopYT Universal v9 — Pro Edition
+-- ESP + Aimbot + Predictive + Silent Aim + Pro GUI + Save Settings
+-- متوافق مع: Arceus X Neo / Delta / Fluxus / Solara (أندرويد + كمبيوتر)
 -- ============================================================
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
+local HttpService = game:GetService("HttpService")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 local Mouse = LocalPlayer:GetMouse()
 
 -- ==================== الإعدادات ====================
 local CONFIG = {
+    -- ESP
     ESPEnabled = true,
     ShowNames = true,
     ShowDistance = true,
@@ -22,6 +24,7 @@ local CONFIG = {
     ShowBox = false,
     TeamCheck = false,
 
+    -- Aimbot
     AimbotEnabled = false,
     AimbotMode = "Silent",
     AutoFire = false,
@@ -34,10 +37,12 @@ local CONFIG = {
     ShowFOVCircle = true,
     LockOnTarget = false,
 
+    -- Predictive
     PredictiveEnabled = true,
     PredictionStrength = 0.5,
     PredictionTime = 0.15,
 
+    -- Colors
     HighlightFill = Color3.fromRGB(255, 60, 60),
     HighlightOutline = Color3.fromRGB(255, 255, 255),
     TracerColor = Color3.fromRGB(255, 60, 60),
@@ -46,21 +51,59 @@ local CONFIG = {
     FillTransparency = 0.7,
     OutlineTransparency = 0.2,
     RefreshRate = 0.5,
+
+    -- UI
+    UIPosition = UDim2.new(0.5, -170, 0.5, -240),
+    ButtonPosition = UDim2.new(1, -80, 0.5, -30),
+    PanelVisible = false,
 }
 
 local THEME = {
-    Bg = Color3.fromRGB(18, 18, 24),
-    Panel = Color3.fromRGB(26, 26, 34),
-    Card = Color3.fromRGB(34, 34, 44),
-    CardHover = Color3.fromRGB(44, 44, 56),
+    Bg = Color3.fromRGB(15, 15, 20),
+    Panel = Color3.fromRGB(22, 22, 30),
+    Card = Color3.fromRGB(32, 32, 42),
+    CardHover = Color3.fromRGB(42, 42, 55),
     Accent = Color3.fromRGB(255, 60, 60),
     Accent2 = Color3.fromRGB(120, 60, 255),
     Text = Color3.fromRGB(240, 240, 245),
-    TextDim = Color3.fromRGB(150, 150, 165),
+    TextDim = Color3.fromRGB(140, 140, 160),
     Success = Color3.fromRGB(60, 220, 130),
     Danger = Color3.fromRGB(255, 70, 70),
     Divider = Color3.fromRGB(45, 45, 58),
+    Gold = Color3.fromRGB(255, 200, 60),
 }
+
+-- ==================== حفظ الإعدادات ====================
+local SETTINGS_FILE = "NoopYT_v9_settings.json"
+local function saveSettings()
+    local data = {}
+    for k, v in pairs(CONFIG) do
+        if type(v) == "boolean" or type(v) == "number" or type(v) == "string" then
+            data[k] = v
+        end
+    end
+    pcall(function()
+        if writefile then
+            writefile(SETTINGS_FILE, HttpService:JSONEncode(data))
+        end
+    end)
+end
+
+local function loadSettings()
+    pcall(function()
+        if isfile and isfile(SETTINGS_FILE) and readfile then
+            local raw = readfile(SETTINGS_FILE)
+            local data = HttpService:JSONDecode(raw)
+            for k, v in pairs(data) do
+                if CONFIG[k] ~= nil then
+                    CONFIG[k] = v
+                end
+            end
+        end
+    end)
+end
+
+loadSettings()
 
 -- ==================== التخزين ====================
 local ESPData = {}
@@ -533,12 +576,16 @@ UserInputService.InputBegan:Connect(function(input, gp)
     if gp then return end
     if input.KeyCode == Enum.KeyCode.RightAlt then
         CONFIG.AimbotEnabled = not CONFIG.AimbotEnabled
+        saveSettings()
     elseif input.KeyCode == Enum.KeyCode.RightControl then
         CONFIG.AutoFire = not CONFIG.AutoFire
+        saveSettings()
     elseif input.KeyCode == Enum.KeyCode.RightShift then
         CONFIG.LockOnTarget = not CONFIG.LockOnTarget
+        saveSettings()
     elseif input.KeyCode == Enum.KeyCode.P then
         CONFIG.PredictiveEnabled = not CONFIG.PredictiveEnabled
+        saveSettings()
     end
 end)
 
@@ -548,10 +595,11 @@ end)
 
 local function createGUI()
     local sg = Instance.new("ScreenGui")
-    sg.Name = "NoopYT_v8"
+    sg.Name = "NoopYT_v9"
     sg.ResetOnSpawn = false
     sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     sg.IgnoreGuiInset = true
+    sg.DisplayOrder = 999
 
     local parent = LocalPlayer:WaitForChild("PlayerGui")
     if gethui then parent = gethui()
@@ -561,9 +609,7 @@ local function createGUI()
     end
     sg.Parent = parent
 
-    -- ============================================================
-    -- زر عائم و اللوحة (مدمج)
-    -- ============================================================
+    -- ============ الزر العائم ============
     local panelRef = nil
     local togglePanel = function()
         if panelRef then
@@ -571,19 +617,18 @@ local function createGUI()
         end
     end
 
-    -- ============ الزر العائم ============
     local btn = Instance.new("TextButton")
     btn.Name = "NoopYT_Toggle"
-    btn.Size = UDim2.new(0, 65, 0, 65)
-    btn.Position = UDim2.new(1, -90, 0.5, -32)
+    btn.Size = UDim2.new(0, 60, 0, 60)
+    btn.Position = CONFIG.ButtonPosition
     btn.BackgroundColor3 = THEME.Panel
     btn.BorderSizePixel = 0
     btn.Text = "N"
     btn.TextColor3 = THEME.Accent
     btn.TextScaled = true
     btn.Font = Enum.Font.GothamBold
-    btn.Active = true
     btn.AutoButtonColor = false
+    btn.ZIndex = 10
     btn.Parent = sg
     Instance.new("UICorner", btn).CornerRadius = UDim.new(1, 0)
     local bStroke = Instance.new("UIStroke", btn)
@@ -592,11 +637,8 @@ local function createGUI()
 
     -- نظام سحب/ضغط ذكي
     local touchState = {
-        startTime = 0,
-        startPos = nil,
-        moved = 0,
-        dragging = false,
-        btnStartPos = nil,
+        startTime = 0, startPos = nil, moved = 0,
+        dragging = false, btnStartPos = nil,
     }
     local TAP_TIME_MAX = 0.4
     local TAP_MOVE_MAX = 12
@@ -642,10 +684,7 @@ local function createGUI()
         local wasTap = (not touchState.dragging)
                     and (duration < TAP_TIME_MAX)
                     and (touchState.moved < TAP_MOVE_MAX)
-
-        if wasTap then
-            togglePanel()
-        end
+        if wasTap then togglePanel() end
 
         touchState.startPos = nil
         touchState.startTime = 0
@@ -657,23 +696,16 @@ local function createGUI()
     btn.InputEnded:Connect(endTouch)
     UserInputService.InputEnded:Connect(endTouch)
 
-    -- بديل احتياطي للأندرويد
-    btn.MouseButton1Click:Connect(function()
-        if touchState.startPos == nil then
-            togglePanel()
-        end
-    end)
-
     -- ============ اللوحة ============
     local panel = Instance.new("Frame")
     panel.Name = "NoopYT_Panel"
-    panel.Size = UDim2.new(0, 340, 0, 520)
-    panel.Position = UDim2.new(0.5, -170, 0.5, -260)
+    panel.Size = UDim2.new(0, 360, 0, 500)
+    panel.Position = CONFIG.UIPosition
     panel.BackgroundColor3 = THEME.Bg
     panel.BorderSizePixel = 0
-    panel.Visible = false
+    panel.Visible = CONFIG.PanelVisible
     panel.Active = true
-    panel.ZIndex = 50
+    panel.ZIndex = 20
     panel.Parent = sg
     Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 14)
     local pStroke = Instance.new("UIStroke", panel)
@@ -685,13 +717,13 @@ local function createGUI()
 
     -- ============ العنوان ============
     local header = Instance.new("Frame")
-    header.Size = UDim2.new(1, 0, 0, 48)
+    header.Size = UDim2.new(1, 0, 0, 50)
     header.BackgroundColor3 = THEME.Panel
     header.BorderSizePixel = 0
+    header.ZIndex = 21
     header.Parent = panel
     Instance.new("UICorner", header).CornerRadius = UDim.new(0, 14)
 
-    -- سحب اللوحة من العنوان فقط
     local panelDragging = false
     local panelDragStart, panelStartPos
     header.InputBegan:Connect(function(input)
@@ -711,20 +743,23 @@ local function createGUI()
                 panelStartPos.X.Scale, panelStartPos.X.Offset + delta.X,
                 panelStartPos.Y.Scale, panelStartPos.Y.Offset + delta.Y
             )
+            CONFIG.UIPosition = panel.Position
         end
     end)
     UserInputService.InputEnded:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1
         or input.UserInputType == Enum.UserInputType.Touch then
             panelDragging = false
+            saveSettings()
         end
     end)
 
     local logo = Instance.new("Frame")
-    logo.Size = UDim2.new(0, 30, 0, 30)
-    logo.Position = UDim2.new(0, 12, 0.5, -15)
+    logo.Size = UDim2.new(0, 32, 0, 32)
+    logo.Position = UDim2.new(0, 12, 0.5, -16)
     logo.BackgroundColor3 = THEME.Accent
     logo.BorderSizePixel = 0
+    logo.ZIndex = 22
     logo.Parent = header
     Instance.new("UICorner", logo).CornerRadius = UDim.new(1, 0)
     local logoText = Instance.new("TextLabel")
@@ -734,28 +769,31 @@ local function createGUI()
     logoText.TextColor3 = Color3.new(1, 1, 1)
     logoText.Font = Enum.Font.GothamBold
     logoText.TextScaled = true
+    logoText.ZIndex = 23
     logoText.Parent = logo
 
     local title = Instance.new("TextLabel")
-    title.Size = UDim2.new(1, -120, 1, 0)
-    title.Position = UDim2.new(0, 50, 0, 0)
+    title.Size = UDim2.new(1, -140, 1, 0)
+    title.Position = UDim2.new(0, 52, 0, 0)
     title.BackgroundTransparency = 1
     title.Text = "NoopYT"
     title.TextColor3 = THEME.Text
     title.Font = Enum.Font.GothamBold
     title.TextSize = 18
     title.TextXAlignment = Enum.TextXAlignment.Left
+    title.ZIndex = 22
     title.Parent = header
 
     local subTitle = Instance.new("TextLabel")
-    subTitle.Size = UDim2.new(1, -120, 0, 14)
-    subTitle.Position = UDim2.new(0, 50, 0, 28)
+    subTitle.Size = UDim2.new(1, -140, 0, 14)
+    subTitle.Position = UDim2.new(0, 52, 0, 30)
     subTitle.BackgroundTransparency = 1
-    subTitle.Text = "v8 Final"
-    subTitle.TextColor3 = THEME.TextDim
+    subTitle.Text = "v9 Pro Edition"
+    subTitle.TextColor3 = THEME.Gold
     subTitle.Font = Enum.Font.Gotham
     subTitle.TextSize = 11
     subTitle.TextXAlignment = Enum.TextXAlignment.Left
+    subTitle.ZIndex = 22
     subTitle.Parent = header
 
     local minBtn = Instance.new("TextButton")
@@ -767,9 +805,13 @@ local function createGUI()
     minBtn.Font = Enum.Font.GothamBold
     minBtn.TextSize = 14
     minBtn.BorderSizePixel = 0
+    minBtn.ZIndex = 22
     minBtn.Parent = header
     Instance.new("UICorner", minBtn).CornerRadius = UDim.new(0, 6)
-    minBtn.MouseButton1Click:Connect(function() panel.Visible = false end)
+    minBtn.MouseButton1Click:Connect(function()
+        panel.Visible = false
+        saveSettings()
+    end)
 
     local closeBtn = Instance.new("TextButton")
     closeBtn.Size = UDim2.new(0, 26, 0, 26)
@@ -780,16 +822,21 @@ local function createGUI()
     closeBtn.Font = Enum.Font.GothamBold
     closeBtn.TextSize = 16
     closeBtn.BorderSizePixel = 0
+    closeBtn.ZIndex = 22
     closeBtn.Parent = header
     Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 6)
-    closeBtn.MouseButton1Click:Connect(function() panel.Visible = false end)
+    closeBtn.MouseButton1Click:Connect(function()
+        panel.Visible = false
+        saveSettings()
+    end)
 
     -- ============ التبويبات ============
     local tabs = Instance.new("Frame")
-    tabs.Size = UDim2.new(1, -20, 0, 36)
-    tabs.Position = UDim2.new(0, 10, 0, 56)
+    tabs.Size = UDim2.new(1, -20, 0, 38)
+    tabs.Position = UDim2.new(0, 10, 0, 58)
     tabs.BackgroundColor3 = THEME.Panel
     tabs.BorderSizePixel = 0
+    tabs.ZIndex = 21
     tabs.Parent = panel
     Instance.new("UICorner", tabs).CornerRadius = UDim.new(0, 8)
     local tabLayout = Instance.new("UIListLayout", tabs)
@@ -800,9 +847,11 @@ local function createGUI()
     tabLayout.SortOrder = Enum.SortOrder.LayoutOrder
 
     local content = Instance.new("Frame")
-    content.Size = UDim2.new(1, -20, 1, -160)
-    content.Position = UDim2.new(0, 10, 0, 100)
+    content.Size = UDim2.new(1, -20, 1, -168)
+    content.Position = UDim2.new(0, 10, 0, 104)
     content.BackgroundTransparency = 1
+    content.ZIndex = 21
+    content.ClipsDescendants = true
     content.Parent = panel
 
     local pages = {}
@@ -811,11 +860,12 @@ local function createGUI()
         page.Size = UDim2.new(1, 0, 1, 0)
         page.BackgroundTransparency = 1
         page.BorderSizePixel = 0
-        page.ScrollBarThickness = 3
+        page.ScrollBarThickness = 4
         page.ScrollBarImageColor3 = THEME.Accent
-        page.CanvasSize = UDim2.new(0, 0, 0, 900)
+        page.CanvasSize = UDim2.new(0, 0, 0, 0)
+        page.AutomaticCanvasSize = Enum.AutomaticSize.Y
         page.Visible = false
-        page.Parent = content
+        page.ZIndex = 22        page.Parent = content
         local ll = Instance.new("UIListLayout", page)
         ll.Padding = UDim.new(0, 8)
         ll.SortOrder = Enum.SortOrder.LayoutOrder
@@ -847,7 +897,7 @@ local function createGUI()
 
     for i, name in ipairs(tabNames) do
         local tb = Instance.new("TextButton")
-        tb.Size = UDim2.new(0, 72, 0, 28)
+        tb.Size = UDim2.new(0, 76, 0, 30)
         tb.BackgroundColor3 = THEME.Card
         tb.BorderSizePixel = 0
         tb.Text = tabIcons[i] .. " " .. name
@@ -855,6 +905,7 @@ local function createGUI()
         tb.Font = Enum.Font.GothamBold
         tb.TextSize = 11
         tb.LayoutOrder = i
+        tb.ZIndex = 23
         tb.Parent = tabs
         Instance.new("UICorner", tb).CornerRadius = UDim.new(0, 6)
         tabButtons[name] = tb
@@ -864,38 +915,42 @@ local function createGUI()
     -- ============ المكونات ============
     local function makeToggle(parent, text, key, order, callback)
         local card = Instance.new("Frame")
-        card.Size = UDim2.new(1, -8, 0, 38)
+        card.Size = UDim2.new(1, -8, 0, 40)
         card.BackgroundColor3 = THEME.Card
         card.BorderSizePixel = 0
         card.LayoutOrder = order
+        card.ZIndex = 23
         card.Parent = parent
         Instance.new("UICorner", card).CornerRadius = UDim.new(0, 8)
 
         local lbl = Instance.new("TextLabel")
         lbl.Size = UDim2.new(1, -70, 1, 0)
-        lbl.Position = UDim2.new(0, 12, 0, 0)
+        lbl.Position = UDim2.new(0, 14, 0, 0)
         lbl.BackgroundTransparency = 1
         lbl.Text = text
         lbl.TextColor3 = THEME.Text
         lbl.Font = Enum.Font.Gotham
         lbl.TextSize = 14
         lbl.TextXAlignment = Enum.TextXAlignment.Left
+        lbl.ZIndex = 24
         lbl.Parent = card
 
         local switch = Instance.new("TextButton")
-        switch.Size = UDim2.new(0, 44, 0, 22)
-        switch.Position = UDim2.new(1, -56, 0.5, -11)
+        switch.Size = UDim2.new(0, 46, 0, 24)
+        switch.Position = UDim2.new(1, -58, 0.5, -12)
         switch.BackgroundColor3 = CONFIG[key] and THEME.Success or THEME.Danger
         switch.Text = ""
         switch.BorderSizePixel = 0
+        switch.ZIndex = 24
         switch.Parent = card
         Instance.new("UICorner", switch).CornerRadius = UDim.new(1, 0)
 
         local knob = Instance.new("Frame")
-        knob.Size = UDim2.new(0, 18, 0, 18)
-        knob.Position = CONFIG[key] and UDim2.new(1, -20, 0.5, -9) or UDim2.new(0, 2, 0.5, -9)
+        knob.Size = UDim2.new(0, 20, 0, 20)
+        knob.Position = CONFIG[key] and UDim2.new(1, -22, 0.5, -10) or UDim2.new(0, 2, 0.5, -10)
         knob.BackgroundColor3 = Color3.new(1, 1, 1)
         knob.BorderSizePixel = 0
+        knob.ZIndex = 25
         knob.Parent = switch
         Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
 
@@ -903,8 +958,9 @@ local function createGUI()
             local on = CONFIG[key]
             switch.BackgroundColor3 = on and THEME.Success or THEME.Danger
             TweenService:Create(knob, TweenInfo.new(0.15),
-                {Position = on and UDim2.new(1, -20, 0.5, -9) or UDim2.new(0, 2, 0.5, -9)}):Play()
+                {Position = on and UDim2.new(1, -22, 0.5, -10) or UDim2.new(0, 2, 0.5, -10)}):Play()
             if callback then callback() end
+            saveSettings()
         end
 
         switch.MouseButton1Click:Connect(function()
@@ -925,22 +981,24 @@ local function createGUI()
 
     local function makeSlider(parent, text, key, minV, maxV, step, order)
         local fr = Instance.new("Frame")
-        fr.Size = UDim2.new(1, -8, 0, 58)
+        fr.Size = UDim2.new(1, -8, 0, 60)
         fr.BackgroundColor3 = THEME.Card
         fr.BorderSizePixel = 0
         fr.LayoutOrder = order
+        fr.ZIndex = 23
         fr.Parent = parent
         Instance.new("UICorner", fr).CornerRadius = UDim.new(0, 8)
 
         local lbl = Instance.new("TextLabel")
         lbl.Size = UDim2.new(1, -60, 0, 20)
-        lbl.Position = UDim2.new(0, 12, 0, 4)
+        lbl.Position = UDim2.new(0, 14, 0, 4)
         lbl.BackgroundTransparency = 1
         lbl.Text = text
         lbl.TextColor3 = THEME.Text
         lbl.Font = Enum.Font.Gotham
         lbl.TextSize = 13
         lbl.TextXAlignment = Enum.TextXAlignment.Left
+        lbl.ZIndex = 24
         lbl.Parent = fr
 
         local valLbl = Instance.new("TextLabel")
@@ -951,13 +1009,15 @@ local function createGUI()
         valLbl.TextColor3 = THEME.Accent
         valLbl.Font = Enum.Font.GothamBold
         valLbl.TextSize = 13
+        valLbl.ZIndex = 24
         valLbl.Parent = fr
 
         local bar = Instance.new("Frame")
-        bar.Size = UDim2.new(1, -24, 0, 8)
+        bar.Size = UDim2.new(1, -24, 0, 10)
         bar.Position = UDim2.new(0, 12, 0, 38)
         bar.BackgroundColor3 = THEME.Bg
         bar.BorderSizePixel = 0
+        bar.ZIndex = 24
         bar.Parent = fr
         Instance.new("UICorner", bar).CornerRadius = UDim.new(1, 0)
 
@@ -965,15 +1025,17 @@ local function createGUI()
         fill.Size = UDim2.new((CONFIG[key] - minV) / (maxV - minV), 0, 1, 0)
         fill.BackgroundColor3 = THEME.Accent
         fill.BorderSizePixel = 0
+        fill.ZIndex = 25
         fill.Parent = bar
         Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
 
         local knob = Instance.new("TextButton")
-        knob.Size = UDim2.new(0, 16, 0, 16)
-        knob.Position = UDim2.new((CONFIG[key] - minV) / (maxV - minV), -8, 0.5, -8)
+        knob.Size = UDim2.new(0, 18, 0, 18)
+        knob.Position = UDim2.new((CONFIG[key] - minV) / (maxV - minV), -9, 0.5, -9)
         knob.BackgroundColor3 = Color3.new(1, 1, 1)
         knob.Text = ""
         knob.BorderSizePixel = 0
+        knob.ZIndex = 26
         knob.Parent = bar
         Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
 
@@ -985,7 +1047,7 @@ local function createGUI()
             CONFIG[key] = v
             valLbl.Text = tostring(v)
             fill.Size = UDim2.new(rel, 0, 1, 0)
-            knob.Position = UDim2.new(rel, -8, 0.5, -8)
+            knob.Position = UDim2.new(rel, -9, 0.5, -9)
         end
 
         knob.InputBegan:Connect(function(i)
@@ -1010,13 +1072,14 @@ local function createGUI()
             if i.UserInputType == Enum.UserInputType.MouseButton1
             or i.UserInputType == Enum.UserInputType.Touch then
                 dragging = false
+                saveSettings()
             end
         end)
     end
 
     local function makeLabel(parent, text, order)
         local l = Instance.new("TextLabel")
-        l.Size = UDim2.new(1, -8, 0, 24)
+        l.Size = UDim2.new(1, -8, 0, 26)
         l.BackgroundTransparency = 1
         l.Text = text
         l.TextColor3 = THEME.TextDim
@@ -1024,10 +1087,32 @@ local function createGUI()
         l.TextSize = 12
         l.TextXAlignment = Enum.TextXAlignment.Left
         l.LayoutOrder = order
+        l.ZIndex = 23
         l.Parent = parent
     end
 
-    -- تبويب ESP
+    local function makeButton(parent, text, color, order, callback)
+        local b = Instance.new("TextButton")
+        b.Size = UDim2.new(1, -8, 0, 34)
+        b.BackgroundColor3 = color or THEME.Card
+        b.BorderSizePixel = 0
+        b.Text = text
+        b.TextColor3 = Color3.new(1, 1, 1)
+        b.Font = Enum.Font.GothamBold
+        b.TextSize = 13
+        b.LayoutOrder = order
+        b.ZIndex = 23
+        b.Parent = parent
+        Instance.new("UICorner", b).CornerRadius = UDim.new(0, 8)
+        if callback then
+            b.MouseButton1Click:Connect(function()
+                callback()
+                saveSettings()
+            end)
+        end
+    end
+
+    -- ============ تبويب ESP ============
     makeLabel(pageESP, "  👁 ESP", 1)
     makeToggle(pageESP, "تفعيل ESP", "ESPEnabled", 2)
     makeToggle(pageESP, "الإطار", "ShowHighlight", 3)
@@ -1041,7 +1126,7 @@ local function createGUI()
     makeToggle(pageESP, "الصندوق", "ShowBox", 7)
     makeToggle(pageESP, "فحص الفريق", "TeamCheck", 8)
 
-    -- تبويب Aimbot
+    -- ============ تبويب Aimbot ============
     makeLabel(pageAim, "  🎯 Aimbot", 1)
     makeToggle(pageAim, "تفعيل Aimbot", "AimbotEnabled", 2)
     makeToggle(pageAim, "قفل الهدف تلقائياً", "LockOnTarget", 3)
@@ -1063,6 +1148,7 @@ local function createGUI()
     modeFr.BackgroundColor3 = THEME.Card
     modeFr.BorderSizePixel = 0
     modeFr.LayoutOrder = 15
+    modeFr.ZIndex = 23
     modeFr.Parent = pageAim
     Instance.new("UICorner", modeFr).CornerRadius = UDim.new(0, 8)
 
@@ -1081,6 +1167,7 @@ local function createGUI()
         b.Font = Enum.Font.GothamBold
         b.TextSize = 12
         b.BorderSizePixel = 0
+        b.ZIndex = 24
         b.Parent = modeFr
         Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
         modeBtns[m.id] = b
@@ -1089,6 +1176,7 @@ local function createGUI()
             for k, btn2 in pairs(modeBtns) do
                 btn2.BackgroundColor3 = k == m.id and THEME.Accent or THEME.Bg
             end
+            saveSettings()
         end)
     end
 
@@ -1098,6 +1186,7 @@ local function createGUI()
     partFr.BackgroundColor3 = THEME.Card
     partFr.BorderSizePixel = 0
     partFr.LayoutOrder = 17
+    partFr.ZIndex = 23
     partFr.Parent = pageAim
     Instance.new("UICorner", partFr).CornerRadius = UDim.new(0, 8)
 
@@ -1118,6 +1207,7 @@ local function createGUI()
         b.Font = Enum.Font.GothamBold
         b.TextSize = 12
         b.BorderSizePixel = 0
+        b.ZIndex = 24
         b.Parent = partFr
         Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
         partBtns[p.id] = b
@@ -1126,14 +1216,15 @@ local function createGUI()
             for k, btn2 in pairs(partBtns) do
                 btn2.BackgroundColor3 = k == p.id and THEME.Accent or THEME.Bg
             end
+            saveSettings()
         end)
     end
 
-    -- تبويب Players
+    -- ============ تبويب Players ============
     makeLabel(pagePlayers, "  👥 قائمة اللاعبين", 1)
 
     local searchBox = Instance.new("TextBox")
-    searchBox.Size = UDim2.new(1, -8, 0, 32)
+    searchBox.Size = UDim2.new(1, -8, 0, 34)
     searchBox.BackgroundColor3 = THEME.Card
     searchBox.BorderSizePixel = 0
     searchBox.Text = ""
@@ -1144,11 +1235,12 @@ local function createGUI()
     searchBox.TextSize = 13
     searchBox.ClearTextOnFocus = false
     searchBox.LayoutOrder = 2
+    searchBox.ZIndex = 23
     searchBox.Parent = pagePlayers
     Instance.new("UICorner", searchBox).CornerRadius = UDim.new(0, 8)
 
     local targetInfo = Instance.new("TextLabel")
-    targetInfo.Size = UDim2.new(1, -8, 0, 30)
+    targetInfo.Size = UDim2.new(1, -8, 0, 32)
     targetInfo.BackgroundColor3 = THEME.Card
     targetInfo.BorderSizePixel = 0
     targetInfo.Text = "🎯 الهدف: لا يوجد"
@@ -1156,30 +1248,22 @@ local function createGUI()
     targetInfo.Font = Enum.Font.GothamBold
     targetInfo.TextSize = 13
     targetInfo.LayoutOrder = 3
+    targetInfo.ZIndex = 23
     targetInfo.Parent = pagePlayers
     Instance.new("UICorner", targetInfo).CornerRadius = UDim.new(0, 8)
 
-    local clearTargetBtn = Instance.new("TextButton")
-    clearTargetBtn.Size = UDim2.new(1, -8, 0, 30)
-    clearTargetBtn.BackgroundColor3 = THEME.Danger
-    clearTargetBtn.Text = "إلغاء الهدف المحدد"
-    clearTargetBtn.TextColor3 = Color3.new(1, 1, 1)
-    clearTargetBtn.Font = Enum.Font.GothamBold
-    clearTargetBtn.TextSize = 12
-    clearTargetBtn.BorderSizePixel = 0
-    clearTargetBtn.LayoutOrder = 4
-    clearTargetBtn.Parent = pagePlayers
-    Instance.new("UICorner", clearTargetBtn).CornerRadius = UDim.new(0, 8)
-    clearTargetBtn.MouseButton1Click:Connect(function()
+    makeButton(pagePlayers, "إلغاء الهدف المحدد", THEME.Danger, 4, function()
         CONFIG.SelectedTarget = nil
         LockedTarget = nil
         targetInfo.Text = "🎯 الهدف: لا يوجد"
     end)
 
     local playersListFrame = Instance.new("Frame")
-    playersListFrame.Size = UDim2.new(1, -8, 0, 400)
+    playersListFrame.Size = UDim2.new(1, -8, 0, 10)
+    playersListFrame.AutomaticSize = Enum.AutomaticSize.Y
     playersListFrame.BackgroundTransparency = 1
     playersListFrame.LayoutOrder = 5
+    playersListFrame.ZIndex = 23
     playersListFrame.Parent = pagePlayers
     local pll = Instance.new("UIListLayout", playersListFrame)
     pll.Padding = UDim.new(0, 5)
@@ -1208,8 +1292,7 @@ local function createGUI()
 
         for i, entry in ipairs(list) do
             local p = entry.player
-            local nameLow = string.lower(p.Name)
-            if search ~= "" and not string.find(nameLow, search, 1, true) then
+            if search ~= "" and not string.find(string.lower(p.Name), search, 1, true) then
                 continue
             end
 
@@ -1217,24 +1300,26 @@ local function createGUI()
             local isLocked = (LockedTarget == p)
 
             local row = Instance.new("TextButton")
-            row.Size = UDim2.new(1, 0, 0, 42)
+            row.Size = UDim2.new(1, 0, 0, 44)
             row.BackgroundColor3 = isLocked and THEME.Accent2
                     or (isSelected and THEME.Accent or THEME.Card)
             row.BorderSizePixel = 0
             row.Text = ""
             row.LayoutOrder = i
+            row.ZIndex = 24
             row.Parent = playersListFrame
             Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
 
             local nameLbl = Instance.new("TextLabel")
             nameLbl.Size = UDim2.new(1, -70, 1, 0)
-            nameLbl.Position = UDim2.new(0, 12, 0, 0)
+            nameLbl.Position = UDim2.new(0, 14, 0, 0)
             nameLbl.BackgroundTransparency = 1
             nameLbl.Text = (isLocked and "🎯 " or "") .. p.Name
             nameLbl.TextColor3 = Color3.new(1, 1, 1)
             nameLbl.Font = Enum.Font.Gotham
             nameLbl.TextSize = 13
             nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+            nameLbl.ZIndex = 25
             nameLbl.Parent = row
 
             local distLbl = Instance.new("TextLabel")
@@ -1245,6 +1330,7 @@ local function createGUI()
             distLbl.TextColor3 = Color3.new(1, 1, 1)
             distLbl.Font = Enum.Font.GothamBold
             distLbl.TextSize = 12
+            distLbl.ZIndex = 25
             distLbl.Parent = row
 
             row.MouseButton1Click:Connect(function()
@@ -1258,6 +1344,7 @@ local function createGUI()
                     targetInfo.Text = "🎯 الهدف: " .. p.Name
                 end
                 refreshPlayerList()
+                saveSettings()
             end)
         end
     end
@@ -1285,19 +1372,20 @@ local function createGUI()
         refreshPlayerList()
     end)
 
-    -- تبويب Settings
+    -- ============ تبويب Settings ============
     makeLabel(pageSettings, "  ⚙ مفاتيح الاختصار", 1)
     local keysCard = Instance.new("Frame")
-    keysCard.Size = UDim2.new(1, -8, 0, 155)
+    keysCard.Size = UDim2.new(1, -8, 0, 150)
     keysCard.BackgroundColor3 = THEME.Card
     keysCard.BorderSizePixel = 0
     keysCard.LayoutOrder = 2
+    keysCard.ZIndex = 23
     keysCard.Parent = pageSettings
     Instance.new("UICorner", keysCard).CornerRadius = UDim.new(0, 8)
 
     local keysText = Instance.new("TextLabel")
     keysText.Size = UDim2.new(1, -20, 1, 0)
-    keysText.Position = UDim2.new(0, 12, 0, 0)
+    keysText.Position = UDim2.new(0, 14, 0, 0)
     keysText.BackgroundTransparency = 1
     keysText.Text = "RightAlt → Aimbot\nRightCtrl → AutoFire\nRightShift → LockOn\nP → Predictive\n\n(للكمبيوتر فقط)"
     keysText.TextColor3 = THEME.Text
@@ -1305,27 +1393,55 @@ local function createGUI()
     keysText.TextSize = 13
     keysText.TextXAlignment = Enum.TextXAlignment.Left
     keysText.TextYAlignment = Enum.TextYAlignment.Top
+    keysText.ZIndex = 24
     keysText.Parent = keysCard
 
-    makeLabel(pageSettings, "  ⚙ معلومات", 3)
+    makeLabel(pageSettings, "  ⚙ إدارة الإعدادات", 3)
+    makeButton(pageSettings, "💾 حفظ الإعدادات", THEME.Success, 4, function()
+        saveSettings()
+        print("[NoopYT] ✅ تم حفظ الإعدادات")
+    end)
+    makeButton(pageSettings, "🔄 إعادة تعيين", THEME.Accent2, 5, function()
+        CONFIG.ESPEnabled = true
+        CONFIG.ShowNames = true
+        CONFIG.ShowDistance = true
+        CONFIG.ShowHighlight = true
+        CONFIG.ShowTracers = true
+        CONFIG.ShowBox = false
+        CONFIG.TeamCheck = false
+        CONFIG.AimbotEnabled = false
+        CONFIG.AutoFire = false
+        CONFIG.AimbotFOV = 200
+        CONFIG.AimbotSmoothing = 0.15
+        CONFIG.AimbotPart = "Head"
+        CONFIG.AimbotMode = "Silent"
+        CONFIG.PredictiveEnabled = true
+        CONFIG.PredictionStrength = 0.5
+        CONFIG.PredictionTime = 0.15
+        print("[NoopYT] 🔄 تم إعادة التعيين (أعد التشغيل للتطبيق)")
+    end)
+
+    makeLabel(pageSettings, "  ⚙ معلومات", 6)
     local infoCard = Instance.new("Frame")
-    infoCard.Size = UDim2.new(1, -8, 0, 110)
+    infoCard.Size = UDim2.new(1, -8, 0, 100)
     infoCard.BackgroundColor3 = THEME.Card
     infoCard.BorderSizePixel = 0
-    infoCard.LayoutOrder = 4
+    infoCard.LayoutOrder = 7
+    infoCard.ZIndex = 23
     infoCard.Parent = pageSettings
     Instance.new("UICorner", infoCard).CornerRadius = UDim.new(0, 8)
 
     local infoText = Instance.new("TextLabel")
     infoText.Size = UDim2.new(1, -20, 1, 0)
-    infoText.Position = UDim2.new(0, 12, 0, 0)
+    infoText.Position = UDim2.new(0, 14, 0, 0)
     infoText.BackgroundTransparency = 1
-    infoText.Text = "NoopYT v8 Final\n\n• Predictive Aim\n• Silent Aim\n• زر مُصلّح\n• Target Lock"
+    infoText.Text = "NoopYT v9 Pro Edition\n\n• ESP احترافي\n• Aimbot + Predictive\n• Silent Aim\n• حفظ الإعدادات"
     infoText.TextColor3 = THEME.Text
     infoText.Font = Enum.Font.Gotham
     infoText.TextSize = 13
     infoText.TextXAlignment = Enum.TextXAlignment.Left
     infoText.TextYAlignment = Enum.TextYAlignment.Top
+    infoText.ZIndex = 24
     infoText.Parent = infoCard
 
     -- فتح تبويب ESP افتراضياً
@@ -1349,6 +1465,14 @@ end
 -- ==================== تشغيل ====================
 pcall(createGUI)
 
-print("[NoopYT v8] ✅ Final Edition Loaded")
-print("[NoopYT v8] ESP + Aimbot + Predictive + Silent Aim")
-print("[NoopYT v8] RightAlt=Aimbot | P=Predictive")
+-- حفظ الإعدادات تلقائياً كل 30 ثانية
+task.spawn(function()
+    while true do
+        task.wait(30)
+        pcall(saveSettings)
+    end
+end)
+
+print("[NoopYT v9] ✅ Pro Edition Loaded")
+print("[NoopYT v9] ESP + Aimbot + Predictive + Save Settings")
+print("[NoopYT v9] RightAlt=Aimbot | P=Predictive")
