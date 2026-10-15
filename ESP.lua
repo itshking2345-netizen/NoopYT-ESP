@@ -1,6 +1,6 @@
 -- ============================================================
--- NoopYT Universal v6 — Silent Aim + Camera Freedom
--- تصويب نحو هدف محدد + إطلاق تلقائي + تحكم كامل بالكاميرا
+-- NoopYT Universal v7 — Predictive Aim Edition
+-- تصويب صامت + توقع حركة + إصلاح الزر + GUI محسّن
 -- ============================================================
 
 local Players = game:GetService("Players")
@@ -24,16 +24,21 @@ local CONFIG = {
 
     -- Aimbot
     AimbotEnabled = false,
-    AimbotMode = "Silent",      -- "Silent" أو "Camera"
-    AutoFire = false,            -- إطلاق تلقائي
-    FireDelay = 0.15,            -- تأخير بين الطلقات
+    AimbotMode = "Silent",
+    AutoFire = false,
+    FireDelay = 0.15,
     AimbotFOV = 200,
     AimbotSmoothing = 0.15,
     AimbotPart = "Head",
     AimbotVisibleOnly = false,
     SelectedTarget = nil,
     ShowFOVCircle = true,
-    LockOnTarget = false,        -- قفل الهدف بمجرد اختياره
+    LockOnTarget = false,
+
+    -- Predictive Aim
+    PredictiveEnabled = true,     -- تفعيل توقع الحركة
+    PredictionStrength = 0.5,     -- 0 = بدون توقع، 1 = توقع كامل
+    PredictionTime = 0.15,        -- كم ثانية نتقدم للأمام
 
     -- ألوان
     HighlightFill = Color3.fromRGB(255, 60, 60),
@@ -65,10 +70,9 @@ local ESPData = {}
 local Tracers = {}
 local Boxes = {}
 local FOVCircle = nil
-local TargetIndicator = nil
-local LockedTarget = nil       -- اللاعب المقفول عليه حالياً
+local LockedTarget = nil
 local LastFireTime = 0
-local OriginalCFrame = nil     -- لحفظ الكاميرا الأصلية
+local LastPositions = {}   -- لتتبع سرعة اللاعبين (Predictive)
 
 -- ==================== أدوات ====================
 local function safeDestroy(obj)
@@ -238,6 +242,7 @@ local function watchCharacter(player)
             h.Died:Connect(function()
                 cleanupESP(player)
                 if LockedTarget == player then LockedTarget = nil end
+                LastPositions[player] = nil
             end)
         end
     end)
@@ -258,13 +263,205 @@ end
 local function onPlayerRemoving(player)
     cleanupESP(player)
     if LockedTarget == player then LockedTarget = nil end
+    LastPositions[player] = nil
 end
 
 for _, p in ipairs(Players:GetPlayers()) do onPlayerAdded(p) end
 Players.PlayerAdded:Connect(onPlayerAdded)
 Players.PlayerRemoving:Connect(onPlayerRemoving)
 
--- ==================== التحديثات البصرية ====================
+-- ============================================================
+-- ==================== PREDICTIVE AIM ========================
+-- ============================================================
+
+-- حساب سرعة اللاعب من آخر موقعه
+local function getPlayerVelocity(player)
+    local part = getCharacterPart(player, "HumanoidRootPart")
+    if not part then return Vector3.zero end
+
+    local now = tick()
+    local last = LastPositions[player]
+    if not last then
+        LastPositions[player] = {pos = part.Position, time = now}
+        return Vector3.zero
+    end
+
+    local dt = now - last.time
+    if dt < 0.02 then
+        return last.vel or Vector3.zero
+    end
+
+    local vel = (part.Position - last.pos) / dt
+    LastPositions[player] = {pos = part.Position, time = now, vel = vel}
+    return vel
+end
+
+-- حساب الموقع المتوقع للهدف
+local function getPredictedPosition(player, part)
+    if not CONFIG.PredictiveEnabled then return part.Position end
+    if CONFIG.PredictionStrength <= 0 then return part.Position end
+
+    local vel = getPlayerVelocity(player)
+    if vel.Magnitude < 1 then return part.Position end  -- ساكن
+
+    -- حساب زمن وصول الرصاص (تقديري)
+    local dist = (Camera.CFrame.Position - part.Position).Magnitude
+    local bulletSpeed = 500   -- تقديري، يمكن تعديله
+    local travelTime = dist / bulletSpeed
+
+    -- الزمن الكلي = travelTime + PredictionTime
+    local totalTime = travelTime + CONFIG.PredictionTime
+    local predicted = part.Position + vel * totalTime * CONFIG.PredictionStrength
+
+    return predicted
+end
+
+-- ============================================================
+-- ==================== AIMBOT ================================
+-- ============================================================
+
+local function isVisible(part)
+    if not CONFIG.AimbotVisibleOnly then return true end
+    local origin = Camera.CFrame.Position
+    local dir = part.Position - origin
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.FilterDescendantsInstances = {LocalPlayer.Character, Camera}
+    local result = workspace:Raycast(origin, dir, params)
+    if result then return result.Instance:IsDescendantOf(part.Parent) end
+    return true
+end
+
+local function getBestTarget()
+    if not Camera then return nil end
+    local center = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+    local closest, shortest = nil, math.huge
+
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player == LocalPlayer then continue end
+        if isSameTeam(player) then continue end
+        if CONFIG.SelectedTarget and CONFIG.SelectedTarget ~= "" then
+            if player.Name ~= CONFIG.SelectedTarget then continue end
+        end
+        local char = player.Character
+        if not char then continue end
+        local h = char:FindFirstChildOfClass("Humanoid")
+        if not h or h.Health <= 0 then continue end
+        local part = char:FindFirstChild(CONFIG.AimbotPart)
+                or char:FindFirstChild("HumanoidRootPart")
+        if not part then continue end
+
+        -- استخدام الموقع المتوقع للفحص
+        local checkPos = getPredictedPosition(player, part)
+        local sp, onScreen = Camera:WorldToViewportPoint(checkPos)
+        if not onScreen then continue end
+        local d = (Vector2.new(sp.X, sp.Y) - center).Magnitude
+        if d > CONFIG.AimbotFOV then continue end
+        if d >= shortest then continue end
+        if not isVisible(part) then continue end
+        shortest = d
+        closest = {player = player, part = part}
+    end
+    return closest
+end
+
+-- Silent Aim
+local function silentAim(target)
+    if not target or not target.part then return end
+    pcall(function()
+        if hookmetamethod and getrawmetatable and Mouse then
+            local mt = getrawmetatable(Mouse)
+            if mt and not mt.__noopYT_hooked then
+                local old = mt.__index
+                mt.__index = newcclosure(function(self, key)
+                    if key == "Hit" and LockedTarget and isValidCharacter(LockedTarget) then
+                        local p = getCharacterPart(LockedTarget, CONFIG.AimbotPart)
+                        if p then
+                            return getPredictedPosition(LockedTarget, p)
+                        end
+                    end
+                    if key == "Target" and LockedTarget then
+                        local p = getCharacterPart(LockedTarget, CONFIG.AimbotPart)
+                        if p then return p end
+                    end
+                    return old(self, key)
+                end)
+                mt.__noopYT_hooked = true
+            end
+        end
+    end)
+end
+
+-- قفل الهدف
+local function updateLockedTarget()
+    if not CONFIG.AimbotEnabled then
+        LockedTarget = nil
+        return
+    end
+    if CONFIG.SelectedTarget and CONFIG.SelectedTarget ~= "" then
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player.Name == CONFIG.SelectedTarget and isValidCharacter(player) then
+                LockedTarget = player
+                return
+            end
+        end
+        LockedTarget = nil
+        return
+    end
+    if CONFIG.LockOnTarget then
+        local target = getBestTarget()
+        LockedTarget = target and target.player or nil
+    else
+        LockedTarget = nil
+    end
+end
+
+-- إطلاق تلقائي
+local function tryAutoFire()
+    if not CONFIG.AutoFire or not LockedTarget then return end
+    local now = tick()
+    if now - LastFireTime < CONFIG.FireDelay then return end
+    LastFireTime = now
+    if mouse1click then
+        pcall(mouse1click)
+        return
+    end
+    pcall(function()
+        local VIM = game:GetService("VirtualInputManager")
+        VIM:SendMouseButtonEvent(0, 0, 0, true, game, 1)
+        task.wait(0.02)
+        VIM:SendMouseButtonEvent(0, 0, 0, false, game, 1)
+    end)
+end
+
+-- تنفيذ Aimbot مع Predictive
+local function performAimbot()
+    if not CONFIG.AimbotEnabled then return end
+    if not LockedTarget or not isValidCharacter(LockedTarget) then return end
+
+    local targetPart = getCharacterPart(LockedTarget, CONFIG.AimbotPart)
+    if not targetPart then return end
+
+    -- الموقع المتوقع
+    local aimPos = getPredictedPosition(LockedTarget, targetPart)
+
+    if CONFIG.AimbotMode == "Silent" then
+        silentAim({player = LockedTarget, part = targetPart})
+    else
+        local desired = CFrame.new(Camera.CFrame.Position, aimPos)
+        local smooth = math.clamp(CONFIG.AimbotSmoothing, 0, 0.95)
+        if smooth <= 0 then
+            Camera.CFrame = desired
+        else
+            Camera.CFrame = Camera.CFrame:Lerp(desired, 1 - smooth)
+        end
+    end
+end
+
+-- ============================================================
+-- ==================== UPDATE VISUALS ========================
+-- ============================================================
+
 local function updateVisuals()
     if not Camera then return end
     local size = Camera.ViewportSize
@@ -281,7 +478,6 @@ local function updateVisuals()
                 if onScreen then
                     tracer.From = startPt
                     tracer.To = Vector2.new(sp.X, sp.Y)
-                    -- الهدف المقفول يتوهج
                     if LockedTarget == player then
                         tracer.Color = THEME.Accent2
                         tracer.Thickness = 3
@@ -351,173 +547,6 @@ local function updateDistances(dt)
     end
 end
 
--- ============================================================
--- ==================== AIMBOT (بدون تحريك الكاميرا) ==========
--- ============================================================
-
-local function isVisible(part)
-    if not CONFIG.AimbotVisibleOnly then return true end
-    local origin = Camera.CFrame.Position
-    local dir = part.Position - origin
-    local params = RaycastParams.new()
-    params.FilterType = Enum.RaycastFilterType.Exclude
-    params.FilterDescendantsInstances = {LocalPlayer.Character, Camera}
-    local result = workspace:Raycast(origin, dir, params)
-    if result then return result.Instance:IsDescendantOf(part.Parent) end
-    return true
-end
-
--- اختيار أفضل هدف
-local function getBestTarget()
-    if not Camera then return nil end
-    local center = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-    local closest, shortest = nil, math.huge
-
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player == LocalPlayer then continue end
-        if isSameTeam(player) then continue end
-        if CONFIG.SelectedTarget and CONFIG.SelectedTarget ~= "" then
-            if player.Name ~= CONFIG.SelectedTarget then continue end
-        end
-        local char = player.Character
-        if not char then continue end
-        local h = char:FindFirstChildOfClass("Humanoid")
-        if not h or h.Health <= 0 then continue end
-        local part = char:FindFirstChild(CONFIG.AimbotPart)
-                or char:FindFirstChild("HumanoidRootPart")
-        if not part then continue end
-        local sp, onScreen = Camera:WorldToViewportPoint(part.Position)
-        if not onScreen then continue end
-        local d = (Vector2.new(sp.X, sp.Y) - center).Magnitude
-        if d > CONFIG.AimbotFOV then continue end
-        if d >= shortest then continue end
-        if not isVisible(part) then continue end
-        shortest = d
-        closest = {player = player, part = part}
-    end
-    return closest
-end
-
--- ============ التصويب بنمط Silent ============
--- يعترض Mouse.Hit مؤقتاً لكي يطلق الرصاص نحو الهدف
--- ملاحظة: لا يعمل في كل الألعاب، فقط التي تستخدم Mouse.Hit أو Mouse.Target
-local function silentAim(target)
-    if not target or not target.part then return end
-    if not Mouse then return end
-
-    -- إعادة تعريف Mouse.Hit مؤقتاً
-    -- يعمل مع الأدوات التي تعتمد على Mouse.Hit مباشرة
-    pcall(function()
-        local aimPos = target.part.Position
-        local oldIndex = getrawmetatable and getrawmetatable(Mouse)
-        -- بعض المشغلات تدعم hookmetamethod
-        if hookmetamethod and getrawmetatable then
-            local mt = getrawmetatable(Mouse)
-            if mt and not mt.__noopYT_hooked then
-                local old = mt.__index
-                mt.__index = newcclosure(function(self, key)
-                    if key == "Hit" and LockedTarget and isValidCharacter(LockedTarget) then
-                        local p = getCharacterPart(LockedTarget, CONFIG.AimbotPart)
-                        if p then return p.Position end
-                    end
-                    if key == "Target" and LockedTarget then
-                        local p = getCharacterPart(LockedTarget, CONFIG.AimbotPart)
-                        if p then return p end
-                    end
-                    return old(self, key)
-                end)
-                mt.__noopYT_hooked = true
-            end
-        end
-    end)
-end
-
--- ============ التصويب بنمط Camera (يحفظ الكاميرا ويرجعها) ============
--- يحرّك الكاميرا نحو الهدف فقط في اللحظة الحرجة (frame واحد) ثم يرجعها
--- هذا يحافظ على حرية تحكمك بالكاميرا
-local function cameraAimMomentary(target)
-    if not target or not target.part then return end
-    local desired = CFrame.new(Camera.CFrame.Position, target.part.Position)
-    local oldCFrame = Camera.CFrame
-    Camera.CFrame = desired
-    -- إرجاع الكاميرا في الإطار التالي فوراً
-    task.defer(function()
-        if Camera then Camera.CFrame = oldCFrame end
-    end)
-end
-
--- ============ قفل الهدف ============
-local function updateLockedTarget()
-    if not CONFIG.AimbotEnabled then
-        LockedTarget = nil
-        return
-    end
-
-    -- إذا محدد لاعب بعينه، اقفله
-    if CONFIG.SelectedTarget and CONFIG.SelectedTarget ~= "" then
-        for _, player in ipairs(Players:GetPlayers()) do
-            if player.Name == CONFIG.SelectedTarget and isValidCharacter(player) then
-                LockedTarget = player
-                return
-            end
-        end
-        LockedTarget = nil
-        return
-    end
-
-    -- إذا LockOnTarget مفعل، اقفل أقرب هدف
-    if CONFIG.LockOnTarget then
-        local target = getBestTarget()
-        LockedTarget = target and target.player or nil
-    else
-        LockedTarget = nil
-    end
-end
-
--- ============ إطلاق تلقائي ============
-local function tryAutoFire()
-    if not CONFIG.AutoFire or not LockedTarget then return end
-    local now = tick()
-    if now - LastFireTime < CONFIG.FireDelay then return end
-    LastFireTime = now
-
-    -- طريقة 1: استخدام mouse1click إذا متوفر
-    if mouse1click then
-        pcall(mouse1click)
-        return
-    end
-    -- طريقة 2: استخدام VirtualInputManager
-    pcall(function()
-        local VIM = game:GetService("VirtualInputManager")
-        VIM:SendMouseButtonEvent(0, 0, 0, true, game, 1)
-        task.wait(0.02)
-        VIM:SendMouseButtonEvent(0, 0, 0, false, game, 1)
-    end)
-end
-
--- ============ الحلقة الرئيسية للتصويب ============
-local function performAimbot()
-    if not CONFIG.AimbotEnabled then return end
-    if not LockedTarget or not isValidCharacter(LockedTarget) then return end
-
-    local targetPart = getCharacterPart(LockedTarget, CONFIG.AimbotPart)
-    if not targetPart then return end
-
-    if CONFIG.AimbotMode == "Silent" then
-        silentAim({player = LockedTarget, part = targetPart})
-    else
-        -- Camera mode: تحريك الكاميرا بسلاسة نحو الهدف
-        local desired = CFrame.new(Camera.CFrame.Position, targetPart.Position)
-        local smooth = math.clamp(CONFIG.AimbotSmoothing, 0, 0.95)
-        if smooth <= 0 then
-            Camera.CFrame = desired
-        else
-            Camera.CFrame = Camera.CFrame:Lerp(desired, 1 - smooth)
-        end
-    end
-end
-
--- ============ دائرة FOV ============
 local function updateFOVCircle()
     if not FOVCircle then return end
     if not CONFIG.ShowFOVCircle or not CONFIG.AimbotEnabled then
@@ -531,8 +560,9 @@ local function updateFOVCircle()
 end
 
 -- ============================================================
--- ==================== الحلقة الرئيسية ========================
+-- ==================== MAIN LOOP =============================
 -- ============================================================
+
 local refreshAccum = 0
 RunService.RenderStepped:Connect(function(dt)
     if not Camera then Camera = workspace.CurrentCamera end
@@ -553,28 +583,26 @@ RunService.RenderStepped:Connect(function(dt)
 end)
 
 -- ============================================================
--- ==================== مفاتيح الاختصار ========================
+-- ==================== KEYBINDS ==============================
 -- ============================================================
 local Keybinds = {
     [Enum.KeyCode.RightAlt] = function()
         CONFIG.AimbotEnabled = not CONFIG.AimbotEnabled
-        print("[NoopYT] Aimbot: " .. (CONFIG.AimbotEnabled and "ON" or "OFF"))
     end,
     [Enum.KeyCode.RightControl] = function()
         CONFIG.AutoFire = not CONFIG.AutoFire
-        print("[NoopYT] AutoFire: " .. (CONFIG.AutoFire and "ON" or "OFF"))
     end,
     [Enum.KeyCode.RightShift] = function()
         CONFIG.LockOnTarget = not CONFIG.LockOnTarget
-        print("[NoopYT] LockOn: " .. (CONFIG.LockOnTarget and "ON" or "OFF"))
+    end,
+    [Enum.KeyCode.P] = function()
+        CONFIG.PredictiveEnabled = not CONFIG.PredictiveEnabled
     end,
 }
 
 UserInputService.InputBegan:Connect(function(input, gp)
     if gp then return end
-    if Keybinds[input.KeyCode] then
-        pcall(Keybinds[input.KeyCode])
-    end
+    if Keybinds[input.KeyCode] then pcall(Keybinds[input.KeyCode]) end
 end)
 
 -- ============================================================
@@ -583,7 +611,7 @@ end)
 
 local function createGUI()
     local sg = Instance.new("ScreenGui")
-    sg.Name = "NoopYT_v6"
+    sg.Name = "NoopYT_v7"
     sg.ResetOnSpawn = false
     sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     sg.IgnoreGuiInset = true
@@ -596,10 +624,13 @@ local function createGUI()
     end
     sg.Parent = parent
 
-    -- زر عائم
+    -- ============================================================
+    -- زر عائم مُصلّح 100%
+    -- ============================================================
     local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0, 56, 0, 56)
-    btn.Position = UDim2.new(0, 20, 0.5, -28)
+    btn.Name = "NoopYT_Toggle"
+    btn.Size = UDim2.new(0, 60, 0, 60)
+    btn.Position = UDim2.new(1, -80, 0.5, -30)  -- يمين الشاشة (للإبهام)
     btn.BackgroundColor3 = THEME.Panel
     btn.BorderSizePixel = 0
     btn.Text = "N"
@@ -607,22 +638,75 @@ local function createGUI()
     btn.TextScaled = true
     btn.Font = Enum.Font.GothamBold
     btn.Active = true
-    btn.Draggable = true
     btn.Parent = sg
     Instance.new("UICorner", btn).CornerRadius = UDim.new(1, 0)
     local bStroke = Instance.new("UIStroke", btn)
     bStroke.Color = THEME.Accent
     bStroke.Thickness = 2
 
+    -- سحب يدوي مخصص (يمنع تعارض Click مع Drag)
+    local dragging = false
+    local dragStart, startPos
+    local movedDistance = 0
+    local DRAG_THRESHOLD = 8  -- حركة بكسل قبل اعتبارها سحب
+
+    local function getInputPos(input)
+        if input.UserInputType == Enum.UserInputType.Touch then
+            return Vector2.new(input.Position.X, input.Position.Y)
+        elseif input.UserInputType == Enum.UserInputType.MouseMovement then
+            return Vector2.new(input.Position.X, input.Position.Y)
+        end
+        return nil
+    end
+
+    btn.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            movedDistance = 0
+            dragStart = getInputPos(input)
+            startPos = btn.Position
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if not dragging then return end
+        local pos = getInputPos(input)
+        if not pos or not dragStart then return end
+        local delta = pos - dragStart
+        movedDistance = math.max(movedDistance, delta.Magnitude)
+        if movedDistance >= DRAG_THRESHOLD then
+            btn.Position = UDim2.new(
+                startPos.X.Scale, startPos.X.Offset + delta.X,
+                startPos.Y.Scale, startPos.Y.Offset + delta.Y
+            )
+        end
+    end)
+
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+            if dragging and movedDistance < DRAG_THRESHOLD then
+                -- ضغطة نقية → فتح/إغلاق
+                if panel then
+                    panel.Visible = not panel.Visible
+                end
+            end
+            dragging = false
+        end
+    end)
+
+    -- ============================================================
     -- اللوحة
+    -- ============================================================
     local panel = Instance.new("Frame")
+    panel.Name = "NoopYT_Panel"
     panel.Size = UDim2.new(0, 340, 0, 520)
     panel.Position = UDim2.new(0.5, -170, 0.5, -260)
     panel.BackgroundColor3 = THEME.Bg
     panel.BorderSizePixel = 0
     panel.Visible = false
     panel.Active = true
-    panel.Draggable = true
     panel.Parent = sg
     Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 14)
     local pStroke = Instance.new("UIStroke", panel)
@@ -630,13 +714,42 @@ local function createGUI()
     pStroke.Thickness = 1.5
     pStroke.Transparency = 0.3
 
-    -- عنوان
+    -- عنوان مع سحب (فقط من العنوان)
     local header = Instance.new("Frame")
     header.Size = UDim2.new(1, 0, 0, 48)
     header.BackgroundColor3 = THEME.Panel
     header.BorderSizePixel = 0
     header.Parent = panel
     Instance.new("UICorner", header).CornerRadius = UDim.new(0, 14)
+
+    -- سحب اللوحة من العنوان فقط
+    local panelDragging = false
+    local panelDragStart, panelStartPos
+    header.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+            panelDragging = true
+            panelDragStart = Vector2.new(input.Position.X, input.Position.Y)
+            panelStartPos = panel.Position
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if not panelDragging then return end
+        if input.UserInputType == Enum.UserInputType.MouseMovement
+        or input.UserInputType == Enum.UserInputType.Touch then
+            local delta = Vector2.new(input.Position.X, input.Position.Y) - panelDragStart
+            panel.Position = UDim2.new(
+                panelStartPos.X.Scale, panelStartPos.X.Offset + delta.X,
+                panelStartPos.Y.Scale, panelStartPos.Y.Offset + delta.Y
+            )
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+            panelDragging = false
+        end
+    end)
 
     local logo = Instance.new("Frame")
     logo.Size = UDim2.new(0, 30, 0, 30)
@@ -669,7 +782,7 @@ local function createGUI()
     subTitle.Size = UDim2.new(1, -120, 0, 14)
     subTitle.Position = UDim2.new(0, 50, 0, 28)
     subTitle.BackgroundTransparency = 1
-    subTitle.Text = "v6 Silent Aim"
+    subTitle.Text = "v7 Predictive"
     subTitle.TextColor3 = THEME.TextDim
     subTitle.Font = Enum.Font.Gotham
     subTitle.TextSize = 11
@@ -687,6 +800,7 @@ local function createGUI()
     minBtn.BorderSizePixel = 0
     minBtn.Parent = header
     Instance.new("UICorner", minBtn).CornerRadius = UDim.new(0, 6)
+    minBtn.MouseButton1Click:Connect(function() panel.Visible = false end)
 
     local closeBtn = Instance.new("TextButton")
     closeBtn.Size = UDim2.new(0, 26, 0, 26)
@@ -699,6 +813,7 @@ local function createGUI()
     closeBtn.BorderSizePixel = 0
     closeBtn.Parent = header
     Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 6)
+    closeBtn.MouseButton1Click:Connect(function() panel.Visible = false end)
 
     -- تبويبات
     local tabs = Instance.new("Frame")
@@ -729,7 +844,7 @@ local function createGUI()
         page.BorderSizePixel = 0
         page.ScrollBarThickness = 3
         page.ScrollBarImageColor3 = THEME.Accent
-        page.CanvasSize = UDim2.new(0, 0, 0, 800)
+        page.CanvasSize = UDim2.new(0, 0, 0, 900)
         page.Visible = false
         page.Parent = content
         local ll = Instance.new("UIListLayout", page)
@@ -968,13 +1083,19 @@ local function createGUI()
     makeSlider(pageAim, "نعومة", "AimbotSmoothing", 0, 0.9, 0.05, 8)
     makeSlider(pageAim, "تأخير الإطلاق", "FireDelay", 0.05, 0.5, 0.05, 9)
 
+    -- Predictive Aim
+    makeLabel(pageAim, "  🚀 توقع الحركة (Predictive)", 10)
+    makeToggle(pageAim, "تفعيل توقع الحركة", "PredictiveEnabled", 11)
+    makeSlider(pageAim, "قوة التوقع", "PredictionStrength", 0, 1.5, 0.05, 12)
+    makeSlider(pageAim, "زمن التوقع (ثانية)", "PredictionTime", 0, 0.5, 0.05, 13)
+
     -- نمط Aimbot
-    makeLabel(pageAim, "  🎯 نمط التصويب", 10)
+    makeLabel(pageAim, "  🎯 نمط التصويب", 14)
     local modeFr = Instance.new("Frame")
     modeFr.Size = UDim2.new(1, -8, 0, 44)
     modeFr.BackgroundColor3 = THEME.Card
     modeFr.BorderSizePixel = 0
-    modeFr.LayoutOrder = 11
+    modeFr.LayoutOrder = 15
     modeFr.Parent = pageAim
     Instance.new("UICorner", modeFr).CornerRadius = UDim.new(0, 8)
 
@@ -1005,12 +1126,12 @@ local function createGUI()
     end
 
     -- اختيار الجزء
-    makeLabel(pageAim, "  🎯 الجزء المستهدف", 12)
+    makeLabel(pageAim, "  🎯 الجزء المستهدف", 16)
     local partFr = Instance.new("Frame")
     partFr.Size = UDim2.new(1, -8, 0, 44)
     partFr.BackgroundColor3 = THEME.Card
     partFr.BorderSizePixel = 0
-    partFr.LayoutOrder = 13
+    partFr.LayoutOrder = 17
     partFr.Parent = pageAim
     Instance.new("UICorner", partFr).CornerRadius = UDim.new(0, 8)
 
@@ -1060,7 +1181,6 @@ local function createGUI()
     searchBox.Parent = pagePlayers
     Instance.new("UICorner", searchBox).CornerRadius = UDim.new(0, 8)
 
-    -- عرض الهدف الحالي
     local targetInfo = Instance.new("TextLabel")
     targetInfo.Size = UDim2.new(1, -8, 0, 30)
     targetInfo.BackgroundColor3 = THEME.Card
@@ -1084,7 +1204,6 @@ local function createGUI()
     clearTargetBtn.LayoutOrder = 4
     clearTargetBtn.Parent = pagePlayers
     Instance.new("UICorner", clearTargetBtn).CornerRadius = UDim.new(0, 8)
-
     clearTargetBtn.MouseButton1Click:Connect(function()
         CONFIG.SelectedTarget = nil
         LockedTarget = nil
@@ -1169,9 +1288,7 @@ local function createGUI()
                     targetInfo.Text = "🎯 الهدف: لا يوجد"
                 else
                     CONFIG.SelectedTarget = p.Name
-                    if CONFIG.AimbotEnabled then
-                        LockedTarget = p
-                    end
+                    if CONFIG.AimbotEnabled then LockedTarget = p end
                     targetInfo.Text = "🎯 الهدف: " .. p.Name
                 end
                 refreshPlayerList()
@@ -1179,13 +1296,11 @@ local function createGUI()
         end
     end
 
-    -- تحديث القائمة
     task.spawn(function()
         while sg.Parent do
             task.wait(1.2)
             if pagePlayers.Visible then
                 pcall(refreshPlayerList)
-                -- تحديث الهدف المعروض
                 if LockedTarget and isValidCharacter(LockedTarget) then
                     targetInfo.Text = "🎯 الهدف: " .. LockedTarget.Name .. " ✓"
                     targetInfo.TextColor3 = THEME.Success
@@ -1206,9 +1321,8 @@ local function createGUI()
 
     -- تبويب Settings
     makeLabel(pageSettings, "  ⚙ مفاتيح الاختصار", 1)
-
     local keysCard = Instance.new("Frame")
-    keysCard.Size = UDim2.new(1, -8, 0, 130)
+    keysCard.Size = UDim2.new(1, -8, 0, 155)
     keysCard.BackgroundColor3 = THEME.Card
     keysCard.BorderSizePixel = 0
     keysCard.LayoutOrder = 2
@@ -1219,7 +1333,7 @@ local function createGUI()
     keysText.Size = UDim2.new(1, -20, 1, 0)
     keysText.Position = UDim2.new(0, 12, 0, 0)
     keysText.BackgroundTransparency = 1
-    keysText.Text = "RightAlt → تبديل Aimbot\nRightCtrl → تبديل الإطلاق التلقائي\nRightShift → تبديل قفل الهدف\n\n(للكمبيوتر فقط)"
+    keysText.Text = "RightAlt → Aimbot\nRightCtrl → AutoFire\nRightShift → LockOn\nP → Predictive\n\n(للكمبيوتر فقط)"
     keysText.TextColor3 = THEME.Text
     keysText.Font = Enum.Font.Gotham
     keysText.TextSize = 13
@@ -1229,7 +1343,7 @@ local function createGUI()
 
     makeLabel(pageSettings, "  ⚙ معلومات", 3)
     local infoCard = Instance.new("Frame")
-    infoCard.Size = UDim2.new(1, -8, 0, 90)
+    infoCard.Size = UDim2.new(1, -8, 0, 110)
     infoCard.BackgroundColor3 = THEME.Card
     infoCard.BorderSizePixel = 0
     infoCard.LayoutOrder = 4
@@ -1240,20 +1354,13 @@ local function createGUI()
     infoText.Size = UDim2.new(1, -20, 1, 0)
     infoText.Position = UDim2.new(0, 12, 0, 0)
     infoText.BackgroundTransparency = 1
-    infoText.Text = "NoopYT v6\n\n• Silent Aim (بدون تحريك الكاميرا)\n• Target Lock\n• إطلاق تلقائي"
+    infoText.Text = "NoopYT v7\n\n• Predictive Aim (توقع الحركة)\n• Silent Aim\n• زر مُصلّح 100%\n• Target Lock"
     infoText.TextColor3 = THEME.Text
     infoText.Font = Enum.Font.Gotham
     infoText.TextSize = 13
     infoText.TextXAlignment = Enum.TextXAlignment.Left
     infoText.TextYAlignment = Enum.TextYAlignment.Top
     infoText.Parent = infoCard
-
-    btn.MouseButton1Click:Connect(function()
-        panel.Visible = not panel.Visible
-        if panel.Visible then selectTab("Aimbot") end
-    end)
-    closeBtn.MouseButton1Click:Connect(function() panel.Visible = false end)
-    minBtn.MouseButton1Click:Connect(function() panel.Visible = false end)
 
     return sg
 end
@@ -1272,6 +1379,6 @@ end
 
 pcall(createGUI)
 
-print("[NoopYT v6] ✅ Silent Aim Edition")
-print("[NoopYT v6] الكاميرا حرة 100% - التصويب لا يحركها")
-print("[NoopYT v6] RightAlt=Aimbot | RightCtrl=AutoFire | RightShift=LockOn")
+print("[NoopYT v7] ✅ Predictive Aim Edition")
+print("[NoopYT v7] زر يمين الشاشة | Predictive Aim جديد")
+print("[NoopYT v7] P=Predictive | RightAlt=Aimbot | RightCtrl=AutoFire")
