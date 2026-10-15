@@ -1,14 +1,13 @@
 -- ============================================================
--- NoopYT Universal v10 — Fixed Edition
--- ESP + Aimbot + Predictive + Silent Aim + Pro GUI
--- إصلاح: التبويبات تظهر الآن بكل محتواها على أندرويد
+-- NoopYT Universal v11 — Lazy Build Edition
+-- ESP + Aimbot + Predictive + Silent Aim + Player List
+-- حل نهائي: كل تبويب يُبنى عند الضغط عليه فقط
 -- ============================================================
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
-local HttpService = game:GetService("HttpService")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 local Mouse = LocalPlayer:GetMouse()
@@ -545,12 +544,12 @@ UserInputService.InputBegan:Connect(function(input, gp)
 end)
 
 -- ============================================================
--- ==================== PRO GUI ===============================
+-- ==================== PRO GUI (LAZY BUILD) ==================
 -- ============================================================
 
 local function createGUI()
     local sg = Instance.new("ScreenGui")
-    sg.Name = "NoopYT_v10"
+    sg.Name = "NoopYT_v11"
     sg.ResetOnSpawn = false
     sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     sg.IgnoreGuiInset = true
@@ -590,11 +589,7 @@ local function createGUI()
     bStroke.Color = THEME.Accent
     bStroke.Thickness = 2
 
-    -- نظام سحب/ضغط ذكي
-    local touchState = {
-        startTime = 0, startPos = nil, moved = 0,
-        dragging = false, btnStartPos = nil,
-    }
+    local touchState = { startTime = 0, startPos = nil, moved = 0, dragging = false, btnStartPos = nil }
     local TAP_TIME_MAX = 0.4
     local TAP_MOVE_MAX = 12
 
@@ -634,13 +629,9 @@ local function createGUI()
         if not touchState.startPos then return end
         if input.UserInputType ~= Enum.UserInputType.Touch
         and input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
-
         local duration = tick() - touchState.startTime
-        local wasTap = (not touchState.dragging)
-                    and (duration < TAP_TIME_MAX)
-                    and (touchState.moved < TAP_MOVE_MAX)
+        local wasTap = (not touchState.dragging) and (duration < TAP_TIME_MAX) and (touchState.moved < TAP_MOVE_MAX)
         if wasTap then togglePanel() end
-
         touchState.startPos = nil
         touchState.startTime = 0
         touchState.moved = 0
@@ -667,10 +658,9 @@ local function createGUI()
     pStroke.Color = THEME.Accent
     pStroke.Thickness = 1.5
     pStroke.Transparency = 0.3
-
     panelRef = panel
 
-    -- ============ العنوان ============
+    -- العنوان
     local header = Instance.new("Frame")
     header.Size = UDim2.new(1, 0, 0, 50)
     header.BackgroundColor3 = THEME.Panel
@@ -741,7 +731,7 @@ local function createGUI()
     subTitle.Size = UDim2.new(1, -140, 0, 14)
     subTitle.Position = UDim2.new(0, 52, 0, 30)
     subTitle.BackgroundTransparency = 1
-    subTitle.Text = "v10 Fixed"
+    subTitle.Text = "v11 Lazy Build"
     subTitle.TextColor3 = THEME.Gold
     subTitle.Font = Enum.Font.Gotham
     subTitle.TextSize = 11
@@ -793,7 +783,7 @@ local function createGUI()
     tabLayout.VerticalAlignment = Enum.VerticalAlignment.Center
     tabLayout.SortOrder = Enum.SortOrder.LayoutOrder
 
-    -- منطقة المحتوى (بدون ScrollingFrame)
+    -- منطقة المحتوى
     local content = Instance.new("Frame")
     content.Size = UDim2.new(1, -20, 1, -168)
     content.Position = UDim2.new(0, 10, 0, 104)
@@ -802,69 +792,34 @@ local function createGUI()
     content.ClipsDescendants = true
     content.Parent = panel
 
-    -- كل صفحة = Frame عادي (بدون ScrollingFrame)
-    local pages = {}
-    local function makePage(name)
+    -- ============ Lazy Build System ============
+    local pages = {}         -- اسم الصفحة → Frame
+    local pageBuilders = {}  -- اسم الصفحة → دالة البناء
+    local builtPages = {}    -- اسم الصفحة → true/false
+    local currentTab = nil
+
+    local function makePageContainer(name)
         local page = Instance.new("Frame")
         page.Name = "Page_" .. name
         page.Size = UDim2.new(1, 0, 1, 0)
+        page.Position = UDim2.new(0, 0, 0, 0)
         page.BackgroundTransparency = 1
         page.Visible = false
         page.ZIndex = 22
-        page.ClipsDescendants = true
         page.Parent = content
 
         local ll = Instance.new("UIListLayout", page)
         ll.Padding = UDim.new(0, 6)
         ll.SortOrder = Enum.SortOrder.LayoutOrder
         ll.HorizontalAlignment = Enum.HorizontalAlignment.Center
+        ll.VerticalAlignment = Enum.VerticalAlignment.Top
+        ll.FillDirection = Enum.FillDirection.Vertical
 
         pages[name] = page
         return page
     end
 
-    local pageESP = makePage("ESP")
-    local pageAim = makePage("Aimbot")
-    local pagePlayers = makePage("Players")
-    local pageSettings = makePage("Settings")
-
-    local tabButtons = {}
-    local tabNames = {"ESP", "Aimbot", "Players", "Settings"}
-    local tabIcons = {"ESP", "AIM", "PLR", "SET"}
-
-    local function selectTab(name)
-        for n, p in pairs(pages) do
-            p.Visible = (n == name)
-        end
-        for n, b in pairs(tabButtons) do
-            if n == name then
-                b.BackgroundColor3 = THEME.Accent
-                b.TextColor3 = Color3.new(1, 1, 1)
-            else
-                b.BackgroundColor3 = THEME.Card
-                b.TextColor3 = THEME.TextDim
-            end
-        end
-    end
-
-    for i, name in ipairs(tabNames) do
-        local tb = Instance.new("TextButton")
-        tb.Size = UDim2.new(0, 76, 0, 30)
-        tb.BackgroundColor3 = THEME.Card
-        tb.BorderSizePixel = 0
-        tb.Text = tabIcons[i]
-        tb.TextColor3 = THEME.TextDim
-        tb.Font = Enum.Font.GothamBold
-        tb.TextSize = 12
-        tb.LayoutOrder = i
-        tb.ZIndex = 23
-        tb.Parent = tabs
-        Instance.new("UICorner", tb).CornerRadius = UDim.new(0, 6)
-        tabButtons[name] = tb
-        tb.MouseButton1Click:Connect(function() selectTab(name) end)
-    end
-
-    -- ============ المكونات ============
+    -- مكونات (makeToggle, makeSlider, etc.) تستخدم أي Frame كـ parent
     local function makeToggle(parent, text, key, order, callback)
         local card = Instance.new("Frame")
         card.Size = UDim2.new(1, -8, 0, 40)
@@ -1053,243 +1008,321 @@ local function createGUI()
         end
     end
 
-    -- ============ تبويب ESP ============
-    makeLabel(pageESP, "  ESP Settings", 1)
-    makeToggle(pageESP, "تفعيل ESP", "ESPEnabled", 2)
-    makeToggle(pageESP, "الإطار", "ShowHighlight", 3)
-    makeToggle(pageESP, "الأسماء", "ShowNames", 4, function()
-        for _, d in pairs(ESPData) do
-            if d.NameLabel then d.NameLabel.Visible = CONFIG.ShowNames end
-        end
-    end)
-    makeToggle(pageESP, "المسافات", "ShowDistance", 5)
-    makeToggle(pageESP, "الخطوط", "ShowTracers", 6)
-    makeToggle(pageESP, "الصندوق", "ShowBox", 7)
-    makeToggle(pageESP, "فحص الفريق", "TeamCheck", 8)
+    -- ============ بناء كل تبويب عند الطلب ============
 
-    -- ============ تبويب Aimbot ============
-    makeLabel(pageAim, "  Aimbot Settings", 1)
-    makeToggle(pageAim, "تفعيل Aimbot", "AimbotEnabled", 2)
-    makeToggle(pageAim, "قفل الهدف تلقائياً", "LockOnTarget", 3)
-    makeToggle(pageAim, "إطلاق تلقائي", "AutoFire", 4)
-    makeToggle(pageAim, "دائرة FOV", "ShowFOVCircle", 5)
-    makeToggle(pageAim, "المرئيون فقط", "AimbotVisibleOnly", 6)
-    makeSlider(pageAim, "نطاق FOV", "AimbotFOV", 30, 600, 10, 7)
-    makeSlider(pageAim, "نعومة", "AimbotSmoothing", 0, 0.9, 0.05, 8)
-    makeSlider(pageAim, "تأخير الإطلاق", "FireDelay", 0.05, 0.5, 0.05, 9)
+    local function buildESP()
+        local page = makePageContainer("ESP")
+        makeLabel(page, "  ESP Settings", 1)
+        makeToggle(page, "تفعيل ESP", "ESPEnabled", 2)
+        makeToggle(page, "الإطار", "ShowHighlight", 3)
+        makeToggle(page, "الأسماء", "ShowNames", 4, function()
+            for _, d in pairs(ESPData) do
+                if d.NameLabel then d.NameLabel.Visible = CONFIG.ShowNames end
+            end
+        end)
+        makeToggle(page, "المسافات", "ShowDistance", 5)
+        makeToggle(page, "الخطوط", "ShowTracers", 6)
+        makeToggle(page, "الصندوق", "ShowBox", 7)
+        makeToggle(page, "فحص الفريق", "TeamCheck", 8)
+        return page
+    end
 
-    makeLabel(pageAim, "  Predictive Aim", 10)
-    makeToggle(pageAim, "تفعيل توقع الحركة", "PredictiveEnabled", 11)
-    makeSlider(pageAim, "قوة التوقع", "PredictionStrength", 0, 1.5, 0.05, 12)
-    makeSlider(pageAim, "زمن التوقع", "PredictionTime", 0, 0.5, 0.05, 13)
+    local function buildAimbot()
+        local page = makePageContainer("Aimbot")
+        makeLabel(page, "  Aimbot Settings", 1)
+        makeToggle(page, "تفعيل Aimbot", "AimbotEnabled", 2)
+        makeToggle(page, "قفل الهدف تلقائياً", "LockOnTarget", 3)
+        makeToggle(page, "إطلاق تلقائي", "AutoFire", 4)
+        makeToggle(page, "دائرة FOV", "ShowFOVCircle", 5)
+        makeToggle(page, "المرئيون فقط", "AimbotVisibleOnly", 6)
+        makeSlider(page, "نطاق FOV", "AimbotFOV", 30, 600, 10, 7)
+        makeSlider(page, "نعومة", "AimbotSmoothing", 0, 0.9, 0.05, 8)
+        makeSlider(page, "تأخير الإطلاق", "FireDelay", 0.05, 0.5, 0.05, 9)
+        makeLabel(page, "  Predictive Aim", 10)
+        makeToggle(page, "تفعيل توقع الحركة", "PredictiveEnabled", 11)
+        makeSlider(page, "قوة التوقع", "PredictionStrength", 0, 1.5, 0.05, 12)
+        makeSlider(page, "زمن التوقع", "PredictionTime", 0, 0.5, 0.05, 13)
+        return page
+    end
 
-    -- ============ تبويب Players ============
-    makeLabel(pagePlayers, "  Player List", 1)
+    local function buildPlayers()
+        local page = makePageContainer("Players")
+        makeLabel(page, "  Player List", 1)
 
-    local searchBox = Instance.new("TextBox")
-    searchBox.Size = UDim2.new(1, -8, 0, 34)
-    searchBox.BackgroundColor3 = THEME.Card
-    searchBox.BorderSizePixel = 0
-    searchBox.Text = ""
-    searchBox.PlaceholderText = "ابحث بالاسم..."
-    searchBox.PlaceholderColor3 = THEME.TextDim
-    searchBox.TextColor3 = THEME.Text
-    searchBox.Font = Enum.Font.Gotham
-    searchBox.TextSize = 13
-    searchBox.ClearTextOnFocus = false
-    searchBox.LayoutOrder = 2
-    searchBox.ZIndex = 23
-    searchBox.Parent = pagePlayers
-    Instance.new("UICorner", searchBox).CornerRadius = UDim.new(0, 8)
+        local searchBox = Instance.new("TextBox")
+        searchBox.Size = UDim2.new(1, -8, 0, 34)
+        searchBox.BackgroundColor3 = THEME.Card
+        searchBox.BorderSizePixel = 0
+        searchBox.Text = ""
+        searchBox.PlaceholderText = "ابحث بالاسم..."
+        searchBox.PlaceholderColor3 = THEME.TextDim
+        searchBox.TextColor3 = THEME.Text
+        searchBox.Font = Enum.Font.Gotham
+        searchBox.TextSize = 13
+        searchBox.ClearTextOnFocus = false
+        searchBox.LayoutOrder = 2
+        searchBox.ZIndex = 23
+        searchBox.Parent = page
+        Instance.new("UICorner", searchBox).CornerRadius = UDim.new(0, 8)
 
-    local targetInfo = Instance.new("TextLabel")
-    targetInfo.Size = UDim2.new(1, -8, 0, 32)
-    targetInfo.BackgroundColor3 = THEME.Card
-    targetInfo.BorderSizePixel = 0
-    targetInfo.Text = "الهدف: لا يوجد"
-    targetInfo.TextColor3 = THEME.Accent
-    targetInfo.Font = Enum.Font.GothamBold
-    targetInfo.TextSize = 13
-    targetInfo.LayoutOrder = 3
-    targetInfo.ZIndex = 23
-    targetInfo.Parent = pagePlayers
-    Instance.new("UICorner", targetInfo).CornerRadius = UDim.new(0, 8)
-
-    makeButton(pagePlayers, "إلغاء الهدف المحدد", THEME.Danger, 4, function()
-        CONFIG.SelectedTarget = nil
-        LockedTarget = nil
+        local targetInfo = Instance.new("TextLabel")
+        targetInfo.Size = UDim2.new(1, -8, 0, 32)
+        targetInfo.BackgroundColor3 = THEME.Card
+        targetInfo.BorderSizePixel = 0
         targetInfo.Text = "الهدف: لا يوجد"
-    end)
+        targetInfo.TextColor3 = THEME.Accent
+        targetInfo.Font = Enum.Font.GothamBold
+        targetInfo.TextSize = 13
+        targetInfo.LayoutOrder = 3
+        targetInfo.ZIndex = 23
+        targetInfo.Parent = page
+        Instance.new("UICorner", targetInfo).CornerRadius = UDim.new(0, 8)
 
-    local playersListFrame = Instance.new("Frame")
-    playersListFrame.Size = UDim2.new(1, -8, 0, 10)
-    playersListFrame.AutomaticSize = Enum.AutomaticSize.Y
-    playersListFrame.BackgroundTransparency = 1
-    playersListFrame.LayoutOrder = 5
-    playersListFrame.ZIndex = 23
-    playersListFrame.Parent = pagePlayers
-    local pll = Instance.new("UIListLayout", playersListFrame)
-    pll.Padding = UDim.new(0, 5)
-    pll.SortOrder = Enum.SortOrder.LayoutOrder
+        makeButton(page, "إلغاء الهدف المحدد", THEME.Danger, 4, function()
+            CONFIG.SelectedTarget = nil
+            LockedTarget = nil
+            targetInfo.Text = "الهدف: لا يوجد"
+        end)
 
-    local function refreshPlayerList()
-        for _, c in ipairs(playersListFrame:GetChildren()) do
-            if c:IsA("TextButton") then c:Destroy() end
-        end
-        local lc = LocalPlayer.Character
-        local lr = lc and lc:FindFirstChild("HumanoidRootPart")
-        local search = string.lower(searchBox.Text or "")
+        local listFrame = Instance.new("Frame")
+        listFrame.Size = UDim2.new(1, -8, 0, 10)
+        listFrame.AutomaticSize = Enum.AutomaticSize.Y
+        listFrame.BackgroundTransparency = 1
+        listFrame.LayoutOrder = 5
+        listFrame.ZIndex = 23
+        listFrame.Parent = page
+        local pll = Instance.new("UIListLayout", listFrame)
+        pll.Padding = UDim.new(0, 5)
+        pll.SortOrder = Enum.SortOrder.LayoutOrder
 
-        local list = {}
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= LocalPlayer then
-                local dist = 0
-                if lr and p.Character then
-                    local rr = p.Character:FindFirstChild("HumanoidRootPart")
-                    if rr then dist = math.floor((lr.Position - rr.Position).Magnitude) end
+        local function refreshPlayerList()
+            for _, c in ipairs(listFrame:GetChildren()) do
+                if c:IsA("TextButton") then c:Destroy() end
+            end
+            local lc = LocalPlayer.Character
+            local lr = lc and lc:FindFirstChild("HumanoidRootPart")
+            local search = string.lower(searchBox.Text or "")
+            local list = {}
+            for _, p in ipairs(Players:GetPlayers()) do
+                if p ~= LocalPlayer then
+                    local dist = 0
+                    if lr and p.Character then
+                        local rr = p.Character:FindFirstChild("HumanoidRootPart")
+                        if rr then dist = math.floor((lr.Position - rr.Position).Magnitude) end
+                    end
+                    table.insert(list, {player = p, dist = dist})
                 end
-                table.insert(list, {player = p, dist = dist})
+            end
+            table.sort(list, function(a, b) return a.dist < b.dist end)
+
+            for i, entry in ipairs(list) do
+                local p = entry.player
+                if search ~= "" and not string.find(string.lower(p.Name), search, 1, true) then
+                    continue
+                end
+                local isSelected = (CONFIG.SelectedTarget == p.Name)
+                local isLocked = (LockedTarget == p)
+                local row = Instance.new("TextButton")
+                row.Size = UDim2.new(1, 0, 0, 44)
+                row.BackgroundColor3 = isLocked and THEME.Accent2
+                        or (isSelected and THEME.Accent or THEME.Card)
+                row.BorderSizePixel = 0
+                row.Text = ""
+                row.LayoutOrder = i
+                row.ZIndex = 24
+                row.Parent = listFrame
+                Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
+
+                local nameLbl = Instance.new("TextLabel")
+                nameLbl.Size = UDim2.new(1, -70, 1, 0)
+                nameLbl.Position = UDim2.new(0, 14, 0, 0)
+                nameLbl.BackgroundTransparency = 1
+                nameLbl.Text = (isLocked and "[LOCK] " or "") .. p.Name
+                nameLbl.TextColor3 = Color3.new(1, 1, 1)
+                nameLbl.Font = Enum.Font.Gotham
+                nameLbl.TextSize = 13
+                nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+                nameLbl.ZIndex = 25
+                nameLbl.Parent = row
+
+                local distLbl = Instance.new("TextLabel")
+                distLbl.Size = UDim2.new(0, 55, 1, 0)
+                distLbl.Position = UDim2.new(1, -60, 0, 0)
+                distLbl.BackgroundTransparency = 1
+                distLbl.Text = entry.dist .. "m"
+                distLbl.TextColor3 = Color3.new(1, 1, 1)
+                distLbl.Font = Enum.Font.GothamBold
+                distLbl.TextSize = 12
+                distLbl.ZIndex = 25
+                distLbl.Parent = row
+
+                row.MouseButton1Click:Connect(function()
+                    if CONFIG.SelectedTarget == p.Name then
+                        CONFIG.SelectedTarget = nil
+                        LockedTarget = nil
+                        targetInfo.Text = "الهدف: لا يوجد"
+                    else
+                        CONFIG.SelectedTarget = p.Name
+                        if CONFIG.AimbotEnabled then LockedTarget = p end
+                        targetInfo.Text = "الهدف: " .. p.Name
+                    end
+                    refreshPlayerList()
+                end)
             end
         end
-        table.sort(list, function(a, b) return a.dist < b.dist end)
 
-        for i, entry in ipairs(list) do
-            local p = entry.player
-            if search ~= "" and not string.find(string.lower(p.Name), search, 1, true) then
-                continue
+        -- تحديث القائمة
+        task.spawn(function()
+            while sg.Parent do
+                task.wait(1.2)
+                if page.Visible then
+                    pcall(refreshPlayerList)
+                end
             end
+        end)
 
-            local isSelected = (CONFIG.SelectedTarget == p.Name)
-            local isLocked = (LockedTarget == p)
+        searchBox:GetPropertyChangedSignal("Text"):Connect(function()
+            refreshPlayerList()
+        end)
 
-            local row = Instance.new("TextButton")
-            row.Size = UDim2.new(1, 0, 0, 44)
-            row.BackgroundColor3 = isLocked and THEME.Accent2
-                    or (isSelected and THEME.Accent or THEME.Card)
-            row.BorderSizePixel = 0
-            row.Text = ""
-            row.LayoutOrder = i
-            row.ZIndex = 24
-            row.Parent = playersListFrame
-            Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
+        return page
+    end
 
-            local nameLbl = Instance.new("TextLabel")
-            nameLbl.Size = UDim2.new(1, -70, 1, 0)
-            nameLbl.Position = UDim2.new(0, 14, 0, 0)
-            nameLbl.BackgroundTransparency = 1
-            nameLbl.Text = (isLocked and "[LOCK] " or "") .. p.Name
-            nameLbl.TextColor3 = Color3.new(1, 1, 1)
-            nameLbl.Font = Enum.Font.Gotham
-            nameLbl.TextSize = 13
-            nameLbl.TextXAlignment = Enum.TextXAlignment.Left
-            nameLbl.ZIndex = 25
-            nameLbl.Parent = row
+    local function buildSettings()
+        local page = makePageContainer("Settings")
+        makeLabel(page, "  Keybinds", 1)
+        local keysCard = Instance.new("Frame")
+        keysCard.Size = UDim2.new(1, -8, 0, 140)
+        keysCard.BackgroundColor3 = THEME.Card
+        keysCard.BorderSizePixel = 0
+        keysCard.LayoutOrder = 2
+        keysCard.ZIndex = 23
+        keysCard.Parent = page
+        Instance.new("UICorner", keysCard).CornerRadius = UDim.new(0, 8)
 
-            local distLbl = Instance.new("TextLabel")
-            distLbl.Size = UDim2.new(0, 55, 1, 0)
-            distLbl.Position = UDim2.new(1, -60, 0, 0)
-            distLbl.BackgroundTransparency = 1
-            distLbl.Text = entry.dist .. "m"
-            distLbl.TextColor3 = Color3.new(1, 1, 1)
-            distLbl.Font = Enum.Font.GothamBold
-            distLbl.TextSize = 12
-            distLbl.ZIndex = 25
-            distLbl.Parent = row
+        local keysText = Instance.new("TextLabel")
+        keysText.Size = UDim2.new(1, -20, 1, 0)
+        keysText.Position = UDim2.new(0, 14, 0, 0)
+        keysText.BackgroundTransparency = 1
+        keysText.Text = "RightAlt = Aimbot\nRightCtrl = AutoFire\nRightShift = LockOn\nP = Predictive"
+        keysText.TextColor3 = THEME.Text
+        keysText.Font = Enum.Font.Gotham
+        keysText.TextSize = 13
+        keysText.TextXAlignment = Enum.TextXAlignment.Left
+        keysText.TextYAlignment = Enum.TextYAlignment.Top
+        keysText.ZIndex = 24
+        keysText.Parent = keysCard
 
-            row.MouseButton1Click:Connect(function()
-                if CONFIG.SelectedTarget == p.Name then
-                    CONFIG.SelectedTarget = nil
-                    LockedTarget = nil
-                    targetInfo.Text = "الهدف: لا يوجد"
+        makeLabel(page, "  Actions", 3)
+        makeButton(page, "Reset All", THEME.Danger, 4, function()
+            CONFIG.ESPEnabled = true
+            CONFIG.ShowNames = true
+            CONFIG.ShowDistance = true
+            CONFIG.ShowHighlight = true
+            CONFIG.ShowTracers = true
+            CONFIG.ShowBox = false
+            CONFIG.AimbotEnabled = false
+            CONFIG.AutoFire = false
+            CONFIG.PredictiveEnabled = true
+        end)
+        makeLabel(page, "  Info", 5)
+        local infoCard = Instance.new("Frame")
+        infoCard.Size = UDim2.new(1, -8, 0, 90)
+        infoCard.BackgroundColor3 = THEME.Card
+        infoCard.BorderSizePixel = 0
+        infoCard.LayoutOrder = 6
+        infoCard.ZIndex = 23
+        infoCard.Parent = page
+        Instance.new("UICorner", infoCard).CornerRadius = UDim.new(0, 8)
+
+        local infoText = Instance.new("TextLabel")
+        infoText.Size = UDim2.new(1, -20, 1, 0)
+        infoText.Position = UDim2.new(0, 14, 0, 0)
+        infoText.BackgroundTransparency = 1
+        infoText.Text = "NoopYT v11\nESP + Aimbot + Predictive\nSilent Aim + Player List"
+        infoText.TextColor3 = THEME.Text
+        infoText.Font = Enum.Font.Gotham
+        infoText.TextSize = 13
+        infoText.TextXAlignment = Enum.TextXAlignment.Left
+        infoText.TextYAlignment = Enum.TextYAlignment.Top
+        infoText.ZIndex = 24
+        infoText.Parent = infoCard
+
+        return page
+    end
+
+    pageBuilders["ESP"] = buildESP
+    pageBuilders["Aimbot"] = buildAimbot
+    pageBuilders["Players"] = buildPlayers
+    pageBuilders["Settings"] = buildSettings
+
+    -- ============ نظام التبويب ============
+    local tabButtons = {}
+    local tabNames = {"ESP", "Aimbot", "Players", "Settings"}
+    local tabIcons = {"ESP", "AIM", "PLR", "SET"}
+
+    local function switchTab(name)
+        if currentTab == name then return end
+
+        -- إخفاء كل الصفحات
+        for n, p in pairs(pages) do
+            p.Visible = false
+        end
+
+        -- بناء الصفحة إن لم تكن مبنية
+        if not builtPages[name] then
+            local builder = pageBuilders[name]
+            if builder then
+                local ok, page = pcall(builder)
+                if ok and page then
+                    builtPages[name] = true
                 else
-                    CONFIG.SelectedTarget = p.Name
-                    if CONFIG.AimbotEnabled then LockedTarget = p end
-                    targetInfo.Text = "الهدف: " .. p.Name
+                    warn("[NoopYT] Failed to build tab: " .. tostring(name))
+                    return
                 end
-                refreshPlayerList()
-            end)
+            end
+        end
+
+        -- إظهار الصفحة
+        local targetPage = pages[name]
+        if targetPage then
+            targetPage.Visible = true
+            currentTab = name
+        end
+
+        -- تحديث ألوان الأزرار
+        for n, b in pairs(tabButtons) do
+            if n == name then
+                b.BackgroundColor3 = THEME.Accent
+                b.TextColor3 = Color3.new(1, 1, 1)
+            else
+                b.BackgroundColor3 = THEME.Card
+                b.TextColor3 = THEME.TextDim
+            end
         end
     end
 
-    task.spawn(function()
-        while sg.Parent do
-            task.wait(1.2)
-            if pagePlayers.Visible then
-                pcall(refreshPlayerList)
-            end
-        end
-    end)
+    for i, name in ipairs(tabNames) do
+        local tb = Instance.new("TextButton")
+        tb.Size = UDim2.new(0, 76, 0, 30)
+        tb.BackgroundColor3 = THEME.Card
+        tb.BorderSizePixel = 0
+        tb.Text = tabIcons[i]
+        tb.TextColor3 = THEME.TextDim
+        tb.Font = Enum.Font.GothamBold
+        tb.TextSize = 12
+        tb.LayoutOrder = i
+        tb.ZIndex = 23
+        tb.Parent = tabs
+        Instance.new("UICorner", tb).CornerRadius = UDim.new(0, 6)
+        tabButtons[name] = tb
+        tb.MouseButton1Click:Connect(function()
+            switchTab(name)
+        end)
+    end
 
-    searchBox:GetPropertyChangedSignal("Text"):Connect(function()
-        refreshPlayerList()
-    end)
-
-    -- ============ تبويب Settings ============
-    makeLabel(pageSettings, "  Keybinds", 1)
-    local keysCard = Instance.new("Frame")
-    keysCard.Size = UDim2.new(1, -8, 0, 140)
-    keysCard.BackgroundColor3 = THEME.Card
-    keysCard.BorderSizePixel = 0
-    keysCard.LayoutOrder = 2
-    keysCard.ZIndex = 23
-    keysCard.Parent = pageSettings
-    Instance.new("UICorner", keysCard).CornerRadius = UDim.new(0, 8)
-
-    local keysText = Instance.new("TextLabel")
-    keysText.Size = UDim2.new(1, -20, 1, 0)
-    keysText.Position = UDim2.new(0, 14, 0, 0)
-    keysText.BackgroundTransparency = 1
-    keysText.Text = "RightAlt = Aimbot\nRightCtrl = AutoFire\nRightShift = LockOn\nP = Predictive"
-    keysText.TextColor3 = THEME.Text
-    keysText.Font = Enum.Font.Gotham
-    keysText.TextSize = 13
-    keysText.TextXAlignment = Enum.TextXAlignment.Left
-    keysText.TextYAlignment = Enum.TextYAlignment.Top
-    keysText.ZIndex = 24
-    keysText.Parent = keysCard
-
-    makeLabel(pageSettings, "  Actions", 3)
-    makeButton(pageSettings, "Save Settings", THEME.Success, 4, function()
-        print("[NoopYT] Settings saved")
-    end)
-    makeButton(pageSettings, "Reset All", THEME.Danger, 5, function()
-        CONFIG.ESPEnabled = true
-        CONFIG.ShowNames = true
-        CONFIG.ShowDistance = true
-        CONFIG.ShowHighlight = true
-        CONFIG.ShowTracers = true
-        CONFIG.ShowBox = false
-        CONFIG.AimbotEnabled = false
-        CONFIG.AutoFire = false
-        CONFIG.PredictiveEnabled = true
-        print("[NoopYT] Reset done")
-    end)
-
-    makeLabel(pageSettings, "  Info", 6)
-    local infoCard = Instance.new("Frame")
-    infoCard.Size = UDim2.new(1, -8, 0, 90)
-    infoCard.BackgroundColor3 = THEME.Card
-    infoCard.BorderSizePixel = 0
-    infoCard.LayoutOrder = 7
-    infoCard.ZIndex = 23
-    infoCard.Parent = pageSettings
-    Instance.new("UICorner", infoCard).CornerRadius = UDim.new(0, 8)
-
-    local infoText = Instance.new("TextLabel")
-    infoText.Size = UDim2.new(1, -20, 1, 0)
-    infoText.Position = UDim2.new(0, 14, 0, 0)
-    infoText.BackgroundTransparency = 1
-    infoText.Text = "NoopYT v10 Fixed\nESP + Aimbot + Predictive\nSilent Aim + Player List"
-    infoText.TextColor3 = THEME.Text
-    infoText.Font = Enum.Font.Gotham
-    infoText.TextSize = 13
-    infoText.TextXAlignment = Enum.TextXAlignment.Left
-    infoText.TextYAlignment = Enum.TextYAlignment.Top
-    infoText.ZIndex = 24
-    infoText.Parent = infoCard
-
-    -- فتح تبويب ESP افتراضياً
-    selectTab("ESP")
+    -- افتح ESP افتراضياً
+    switchTab("ESP")
 
     return sg
 end
@@ -1312,5 +1345,5 @@ if not ok then
     warn("[NoopYT] GUI Error: " .. tostring(err))
 end
 
-print("[NoopYT v10] Loaded - Fixed Edition")
-print("[NoopYT v10] ESP + Aimbot + Predictive + Player List")
+print("[NoopYT v11] Loaded - Lazy Build Edition")
+print("[NoopYT v11] ESP + Aimbot + Predictive + Player List")
